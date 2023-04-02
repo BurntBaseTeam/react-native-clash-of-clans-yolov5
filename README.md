@@ -11,6 +11,10 @@ Repo started using: https://docs.expo.dev/get-started/create-a-new-app/
 
 ## Example:
 
-Note: Gotta fix the bounding box position, something is off 😅
+### Screenshot:
 
-![Annotations](/docs/example.PNG)
+<img src="docs/example.PNG" data-canonical-src="docs/example.PNG" width="200" height="400" />
+
+### GIF:
+
+![Annotations video](/docs/example.gif)

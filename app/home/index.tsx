@@ -1,5 +1,5 @@
 import "react-native-reanimated";
-import { LayoutChangeEvent, StyleSheet } from "react-native";
+import { Dimensions, LayoutChangeEvent, StyleSheet } from "react-native";
 import {
   Camera,
   useCameraDevices,
@@ -8,7 +8,7 @@ import {
 
 import { Text } from "../../components/Themed";
 import { scanClashBase } from "../frame-processors/Plugin";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { runOnJS } from "react-native-reanimated";
 import { View } from "react-native";
 
@@ -16,25 +16,41 @@ export default function TabOneScreen() {
   const devices = useCameraDevices();
   const device = devices.back;
   const [coordinates, setCoordinates] = useState([]);
+  const backCam = devices.back;
 
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      "worklet";
-      let results = scanClashBase(frame)
-      console.log("frameProcessor", results)
+  const format = useMemo(() => {
+    const desiredWidth = 1280;
+    const desiredHeight = 720;
+    let selectedCam;
+    selectedCam = backCam;
+    if (selectedCam) {
+      for (let index = 0; index < selectedCam.formats.length; index++) {
+        const format = selectedCam.formats[index];
+        if (
+          format.videoWidth == desiredWidth &&
+          format.videoHeight == desiredHeight
+        ) {
+          console.log("selected format: " + format);
+          return format;
+        }
+      }
+    }
+    return undefined;
+  }, []);
 
-      runOnJS(setCoordinates)(results)
-      return
-    },
-    []
-  );
+  const frameProcessor = useFrameProcessor((frame) => {
+    "worklet";
+    let results = scanClashBase(frame);
+
+    runOnJS(setCoordinates)(results);
+    return;
+  }, []);
 
   const [cameraWidth, setCameraWidth] = useState(0);
   const [cameraHeight, setCameraHeight] = useState(0);
 
   const handleCameraLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
-    console.log("handleCameraLayout", width, height)
     setCameraWidth(width);
     setCameraHeight(height);
   };
@@ -46,23 +62,25 @@ export default function TabOneScreen() {
       </>
     );
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={handleCameraLayout}>
       <Camera
-        onLayout={handleCameraLayout}
         style={styles.camera}
         device={device}
         isActive={true}
         frameProcessor={frameProcessor}
         preset="medium"
+        format={format}
       />
-      {coordinates.map((box, index) => (
-        <Box
-          key={index}
-          box={box}
-          cameraWidth={cameraWidth}
-          cameraHeight={cameraHeight}
-        />
-      ))}
+      <View style={{ position: "absolute", top: 0, left: 0 }}>
+        {coordinates.map((box, index) => (
+          <Box
+            key={index}
+            box={box}
+            cameraWidth={cameraWidth}
+            cameraHeight={cameraHeight}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -70,6 +88,8 @@ export default function TabOneScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    aspectRatio: 1,
+    maxHeight: Dimensions.get("window").height * 0.5,
   },
   camera: {
     flex: 1,
@@ -77,15 +97,20 @@ const styles = StyleSheet.create({
 });
 
 const Box = ({ box, cameraWidth, cameraHeight }: any) => {
+  const x1 = (box.x - box.width / 2) * cameraWidth;
+  const y1 = (box.y - box.height / 2) * cameraHeight;
+  const width = box.width * cameraWidth;
+  const height = box.height * cameraHeight;
+
   const boxStyle = {
     position: "absolute",
     borderColor: "red",
     borderWidth: 2,
     borderRadius: 3,
-    width: box.width * cameraWidth,
-    height: box.height * cameraHeight,
-    left: box.x * cameraWidth,
-    top: box.y * cameraHeight,
+    left: x1,
+    top: y1,
+    width: width,
+    height: height,
   } as any;
 
   return <View style={boxStyle} />;

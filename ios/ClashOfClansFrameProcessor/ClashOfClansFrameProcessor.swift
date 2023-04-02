@@ -1,5 +1,6 @@
 import CoreML
 import UIKit
+import Vision
 
 @objc(ClashOfClansFrameProcessorPlugin)
 public class ClashOfClansFrameProcessorPlugin: NSObject, FrameProcessorPluginBase {
@@ -12,41 +13,42 @@ public class ClashOfClansFrameProcessorPlugin: NSObject, FrameProcessorPluginBas
   }
   
   
-  @objc public static func callback(_ frame: Frame!, withArgs _: [Any]!) -> Any! {
-    if coreMLModel == nil {
-      do {
-        try loadCoreMLModel()
-      } catch {
-        print("Error loading coreml model: \(error.localizedDescription)")
-        return ["Error loading coreml model: \(error.localizedDescription)"]
+  
+    @objc public static func callback(_ frame: Frame!, withArgs _: [Any]!) -> Any! {
+      if coreMLModel == nil {
+        do {
+          try loadCoreMLModel()
+        } catch {
+          print("Error loading coreml model: \(error.localizedDescription)")
+          return ["Error loading coreml model: \(error.localizedDescription)"]
+        }
       }
+  
+      let buffer = frame.buffer!
+      let orientation = frame.orientation
+  
+      guard let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
+  
+      let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+      let context = CIContext(options: nil)
+  
+      guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+  
+      let image = UIImage(cgImage: cgImage)
+  
+      let resizedImage = image.scaleFillTo800()!
+  
+      guard let pixelBuffer = resizedImage.toCVPixelBuffer() else {
+        print("Error: Failed to convert UIImage to CVPixelBuffer.")
+        return nil
+      }
+  
+  
+  
+      let results = try? self.coreMLModel.prediction(image: pixelBuffer, iouThreshold: 0.6, confidenceThreshold: 0.6)
+  
+      return convertToReactNativeCoordinates(mlMultiArray: results!.coordinates)
     }
-    
-    let buffer = frame.buffer!
-    let orientation = frame.orientation
-    
-    guard let imageBuffer = CMSampleBufferGetImageBuffer(buffer) else { return nil }
-    
-    let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-    let context = CIContext(options: nil)
-    
-    guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-    
-    let image = UIImage(cgImage: cgImage)
-    
-    let resizedImage = image.resize(to: CGSize(width: 800, height: 800))
-    
-    guard let pixelBuffer = resizedImage.toCVPixelBuffer() else {
-      print("Error: Failed to convert UIImage to CVPixelBuffer.")
-      return nil
-    }
-    
-    
-    
-    let results = try? self.coreMLModel.prediction(image: pixelBuffer, iouThreshold: 0.3, confidenceThreshold: 0.3)
-    
-    return convertToReactNativeCoordinates(mlMultiArray: results!.coordinates)
-  }
   
   static func convertToReactNativeCoordinates(mlMultiArray: MLMultiArray) -> [[String: Float]] {
     let count = mlMultiArray.count / 4
@@ -177,6 +179,23 @@ extension UIImage {
     return resizedImage ?? self
   }
   
+  func scaleFillToSize(_ size: CGSize) -> UIImage? {
+    let aspectFitSize = UIImage.CGRectAspectFill(fromRect: CGRect(origin: .zero, size: self.size), toRect: CGRect(origin: .zero, size: size)).size
+          
+          UIGraphicsBeginImageContextWithOptions(size, true, 0)
+          let origin = CGPoint(x: (size.width - aspectFitSize.width) / 2, y: (size.height - aspectFitSize.height) / 2)
+          self.draw(in: CGRect(origin: origin, size: aspectFitSize))
+          let scaledImage = UIGraphicsGetImageFromCurrentImageContext()
+          UIGraphicsEndImageContext()
+          
+          return scaledImage
+      }
+      
+      func scaleFillTo800() -> UIImage? {
+          let size = CGSize(width: 800, height: 800)
+          return self.scaleFillToSize(size)
+      }
+  
   func toCVPixelBuffer() -> CVPixelBuffer? {
     let attrs = [
       kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
@@ -221,4 +240,32 @@ extension UIImage {
     
     return resultPixelBuffer
   }
+  
+  static func CGRectAspectFill(fromRect:CGRect, toRect:CGRect) -> CGRect {
+      let aspectWidth = toRect.width / fromRect.width
+      let aspectHeight = toRect.height / fromRect.height
+      let aspectRatio = max(aspectWidth, aspectHeight)
+      
+      let scaledWidth = fromRect.width * aspectRatio
+      let scaledHeight = fromRect.height * aspectRatio
+      let originX = (toRect.width - scaledWidth) / 2.0
+      let originY = (toRect.height - scaledHeight) / 2.0
+      
+      return CGRect(x: originX, y: originY, width: scaledWidth, height: scaledHeight)
+  }
 }
+
+//private extension CGRect {
+//    static func CGRectAspectFill(fromRect:CGRect, toRect:CGRect) -> CGRect {
+//        let aspectWidth = toRect.width / fromRect.width
+//        let aspectHeight = toRect.height / fromRect.height
+//        let aspectRatio = max(aspectWidth, aspectHeight)
+//
+//        let scaledWidth = fromRect.width * aspectRatio
+//        let scaledHeight = fromRect.height * aspectRatio
+//        let originX = (toRect.width - scaledWidth) / 2.0
+//        let originY = (toRect.height - scaledHeight) / 2.0
+//
+//        return CGRect(x: originX, y: originY, width: scaledWidth, height: scaledHeight)
+//    }
+//}
